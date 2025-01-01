@@ -1,4 +1,11 @@
-# Elasticsearch
+# Functionbeat
+
+Functionbeat is defined as a “serverless” shipper that can be deployed as a function to collect and ship data into the ELK Stack. Designed for monitoring cloud environments, Functionbeat is currently tailored for Amazon setups and can be deployed as an Amazon Lambda function to collect data from Amazon CloudWatch, Kinesis and SQS.
+
+We will create and deploy fuctionbeat to read cloudwatch logs generated from a aws lambda function and ship them to an elasticsearch instance.
+
+
+## setup Elasticsearch
 
 ## Creat key pair
 https://console.aws.amazon.com/ec2/ >
