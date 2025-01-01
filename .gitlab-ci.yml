@@ -1,0 +1,292 @@
+
+stages:
+  - build
+  - init
+  - plan
+  - apply
+  - deploy
+  - destroy
+
+
+variables:
+  FUNCTIONBEAT_IMAGE: $CI_REGISTRY/platform-data/erewhon/functionbeat:$CI_COMMIT_REF_NAME
+
+
+##################################################################
+## FUNCTIONBEAT - PLAYGROUND                                  ####
+##################################################################
+playground:build-functionbeat:
+  stage: init
+  image: git.virginpulse.com:4567/docker-images/docker
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - cd functionbeat
+    - docker build
+      --build-arg aws_access_key_id=$PLAYGROUND_AWS_ACCESS_KEY_ID
+      --build-arg aws_secret_access_key=$PLAYGROUND_AWS_SECRET_ACCESS_KEY
+      --build-arg aws_default_region="us-east-1"
+      --build-arg elasticsearch_hosts=$PLAYGROUND_ELASTICSEARCH_HOSTS
+      -t $FUNCTIONBEAT_IMAGE .
+    - docker push $FUNCTIONBEAT_IMAGE
+
+
+playground:deploy-functionbeat:
+  stage: deploy
+  dependencies:
+    - playground:build-functionbeat
+  image:  git.virginpulse.com:4567/docker-images/docker
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker pull $FUNCTIONBEAT_IMAGE
+    - docker run $FUNCTIONBEAT_IMAGE
+
+
+##################################################################
+## INIT                                                       ####
+##################################################################
+
+jar:init:
+  stage: init
+  image: gradle:jdk8
+  script:
+    - gradle shadowJar
+  artifacts:
+    expire_in: 1h
+    paths:
+      - ./build/libs/erewhon-lambda-1.0-SNAPSHOT.jar
+#  only:
+##    refs:
+##      - master
+#    changes:
+#      - "*.tf"
+#      - "*.kt"
+#      - "ci/variables/playground"
+  tags:
+    - docker
+    - ops
+
+
+##################################################################
+## PLAN                                                       ####
+##################################################################
+
+playground:plan:
+  stage: plan
+  image: git.virginpulse.com:4567/docker-images/terraform
+  dependencies:
+    - jar:init
+  before_script:
+    - source ci/variables/playground
+  script:
+    - cd terraform/environments/playground
+    - terraform -v
+    - terraform init
+    - terraform validate
+    - terraform plan
+  artifacts:
+    expire_in: 1h
+    paths:
+      - ./build/libs/erewhon-lambda-1.0-SNAPSHOT.jar
+
+qa:plan:
+  stage: plan
+  image: git.virginpulse.com:4567/docker-images/terraform
+  when: manual
+  dependencies:
+    - jar:init
+  before_script:
+    - source ci/variables/qa
+  script:
+    - cd terraform/environments/qa
+    - terraform -v
+    - terraform init
+    - terraform validate
+    - terraform plan
+  artifacts:
+    expire_in: 1h
+    paths:
+      - ./build/libs/erewhon-lambda-1.0-SNAPSHOT.jar
+
+stage:plan:
+  stage: plan
+  image: git.virginpulse.com:4567/docker-images/terraform
+  when: manual
+  dependencies:
+    - jar:init
+  before_script:
+    - source ci/variables/stage
+  script:
+    - cd terraform/environments/stage
+    - terraform -v
+    - terraform init
+    - terraform validate
+    - terraform plan
+  artifacts:
+    expire_in: 1h
+    paths:
+      - ./build/libs/erewhon-lambda-1.0-SNAPSHOT.jar
+
+prod:plan:
+  stage: plan
+  image: git.virginpulse.com:4567/docker-images/terraform
+  when: manual
+  dependencies:
+    - jar:init
+  before_script:
+    - source ci/variables/prod
+  script:
+    - cd terraform/environments/prod
+    - terraform -v
+    - terraform init
+    - terraform validate
+    - terraform plan
+  artifacts:
+    expire_in: 1h
+    paths:
+      - ./build/libs/erewhon-lambda-1.0-SNAPSHOT.jar
+
+
+##################################################################
+## APPLY                                                      ####
+##################################################################
+playground:apply:
+  stage: apply
+  image: git.virginpulse.com:4567/docker-images/terraform
+#  when: manual
+  dependencies:
+    - playground:plan
+  before_script:
+    - source ci/variables/playground
+  script:
+    - cd terraform/environments/playground
+    - terraform init
+    - terraform validate
+    - terraform plan -out=tfplan && terraform apply tfplan
+#    - terraform output -module=recommendationRead
+#  only:
+##    refs:
+##      - master
+#    changes:
+#      - "*.tf"
+#      - "*.kt"
+#      - "ci/variables/playground"
+  environment:
+    name: playground
+  tags:
+    - docker
+    - ops
+
+qa:apply:
+  stage: apply
+  image: git.virginpulse.com:4567/docker-images/terraform
+  when: manual
+  dependencies:
+    - qa:plan
+  before_script:
+    - source ci/variables/qa
+  script:
+    - cd terraform/environments/qa
+    - terraform init
+    - terraform validate
+    - terraform plan -out=tfplan && terraform apply tfplan
+#    - terraform output -module=recommendationRead
+
+#  only:
+#    #    refs:
+#    #      - master
+#    changes:
+#      - "*.tf"
+#      - "*.kt"
+#      - "ci/variables/playground"
+  environment:
+    name: qa
+  tags:
+    - docker
+    - ops
+
+
+stage:apply:
+  stage: apply
+  image: git.virginpulse.com:4567/docker-images/terraform
+  when: manual
+  dependencies:
+    - stage:plan
+  before_script:
+    - source ci/variables/stage
+  script:
+    - cd terraform/environments/stage
+    - terraform init
+    - terraform validate
+    - terraform plan -out=tfplan && terraform apply tfplan
+  #    - terraform output -module=recommendationRead
+  #  only:
+  #    #    refs:
+  #    #      - master
+  #    changes:
+  #      - "*.tf"
+  #      - "*.kt"
+  #      - "ci/variables/playground"
+  environment:
+    name: stage
+  tags:
+    - docker
+    - ops
+
+prod:apply:
+  stage: apply
+  image: git.virginpulse.com:4567/docker-images/terraform
+  when: manual
+  dependencies:
+    - prod:plan
+  before_script:
+    - source ci/variables/prod
+  script:
+    - cd terraform/environments/prod
+    - terraform init
+    - terraform validate
+    - terraform plan -out=tfplan && terraform apply tfplan
+#    - terraform output -module=recommendationRead
+#  only:
+#    #    refs:
+#    #      - master
+#    changes:
+#      - "*.tf"
+#      - "*.kt"
+#      - "ci/variables/playground"
+  environment:
+    name: prod
+  tags:
+    - docker
+    - ops
+
+
+##################################################################
+## DESTROY                                                    ####
+##################################################################
+
+playground:destroy:
+ stage: destroy
+ image: git.virginpulse.com:4567/docker-images/terraform
+ when: manual
+ dependencies:
+   - playground:apply
+ before_script:
+   - source ci/variables/playground
+ script:
+   - cd terraform/environments/playground
+   - terraform init
+   - terraform destroy -auto-approve
+ #  only:
+ #    refs:
+ #      - master
+ #    changes:
+ #      - "*.tf"
+ #      - "*.kt"
+ #      - "ci/variables/playground"
+ environment:
+   name: playground
+ tags:
+   - docker
+   - ops

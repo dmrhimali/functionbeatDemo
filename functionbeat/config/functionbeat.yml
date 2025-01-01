@@ -1,0 +1,36 @@
+
+#============================  Provider ===============================
+functionbeat.provider.aws.deploy_bucket: "functionbeat-lambdalog-deploy"
+functionbeat.provider.aws.functions:
+  - name: cloudwatch
+    enabled: true
+    type: cloudwatch_logs
+    description: "lambda function for cloudwatch logs"
+    triggers:
+      - log_group_name: /aws/lambda/activityStreamLambda
+
+#==================== Elasticsearch template setting ==========================
+setup.template.settings:
+  index.number_of_shards: 1
+
+#================================ Outputs =====================================
+output.elasticsearch:
+  hosts: ${HOSTS}
+  enabled: true
+  index: ${INDEX_NAME}-%{+yyyy.MM.dd}
+
+setup.template.name: "insight-lambda"
+setup.template.pattern: "insight-lambda-*"
+
+#================================ Processors =====================================
+processors:
+  - add_host_metadata: ~
+  - add_cloud_metadata: ~
+  - add_fields:
+      target: ''
+      fields:
+        aaplication: insights-lambda
+
+
+#================================ Logging =====================================
+logging.level: debug
